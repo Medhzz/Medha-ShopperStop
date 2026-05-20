@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin – MedhaShopperStop</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<nav class="navbar">
+  <a href="admin.html" class="brand">MedhaShopperStop</a>
+  <div class="nav-links">
+    <a href="admin.html">Products</a>
+    <a href="reports.html">Reports</a>
+    <a href="admin.html?seed=1" id="btn-seed-link">Seed Data</a>
+    <a href="#" id="btn-logout">Logout</a>
+  </div>
+</nav>
+
+<div class="page">
+  <div class="toolbar">
+    <h2>Product Management</h2>
+    <div class="toolbar-right">
+      <select id="cat-filter" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);color:#fff;padding:0.5rem 0.75rem;border-radius:8px;cursor:pointer">
+        <option value="">All Categories</option>
+        <option value="women">Women</option>
+        <option value="men">Men</option>
+        <option value="kids">Kids</option>
+      </select>
+      <button class="btn btn-primary btn-sm" id="btn-add">+ Add Product</button>
+    </div>
+  </div>
+  <div id="alert-area"></div>
+  <div class="table-wrap">
+    <table id="products-table">
+      <thead><tr><th>Image</th><th>Title</th><th>Category</th><th>Price</th><th>Qty</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="products-body"><tr><td colspan="7" class="loading">Loading...</td></tr></tbody>
+    </table>
+  </div>
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<!-- Product Modal -->
+<div class="modal-overlay" id="product-modal">
+  <div class="modal">
+    <h3 id="modal-title">Add Product</h3>
+    <div id="modal-alert"></div>
+    <form id="product-form">
+      <div class="form-row">
+        <div class="form-group"><label>Title</label><input id="f-title" placeholder="Floral Dress" required /></div>
+        <div class="form-group"><label>Category</label>
+          <select id="f-cat"><option value="women">Women</option><option value="men">Men</option><option value="kids">Kids</option></select>
+        </div>
+      </div>
+      <div class="form-group"><label>Description</label><textarea id="f-desc" rows="2" placeholder="Beautiful..."></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label>Price (&#8377;)</label><input type="number" id="f-price" min="0" step="0.01" /></div>
+        <div class="form-group"><label>Quantity</label><input type="number" id="f-qty" min="0" /></div>
+      </div>
+      <div class="form-group"><label>Image URL</label><input id="f-img" placeholder="https://..." /></div>
+      <div class="form-group"><label class="check-label"><input type="checkbox" id="f-active" checked /> Active (visible to customers)</label></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" id="btn-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary btn-sm" id="btn-save">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<script src="js/firebase.js"></script>
+<script src="js/app.js"></script>
+<script>
+  const PAGE_SIZE = 8;
+  let allProducts = [], editId = null, currentPage = 1;
+
+  auth.onAuthStateChanged(function(user) {
+    if (!user) { window.location.href = "login.html"; return; }
+    if (!isAdmin(user)) { window.location.href = "index.html"; return; }
+    // Seed if requested
+    if (new URLSearchParams(window.location.search).get("seed") === "1") {
+      seedProducts().then(function() {
+        showAlert("12 sample products added!", "success");
+        history.replaceState({}, "", "admin.html");
+        loadProducts();
+      });
+    } else {
+      loadProducts();
+    }
+  });
+
+  function loadProducts() {
+    getProducts().then(function(p) {
+      allProducts = p; currentPage = 1; renderTable();
+    });
+  }
+
+  function filtered() {
+    const cat = $("#cat-filter").val();
+    return cat ? allProducts.filter(p => p.category_id === cat) : allProducts;
+  }
+
+  function renderTable() {
+    const list = filtered();
+    const total = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    if (currentPage > total) currentPage = total;
+    const page = list.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
+    if (!page.length) {
+      $("#products-body").html('<tr><td colspan="7" class="empty">No products found.</td></tr>');
+    } else {
+      $("#products-body").html(page.map(p => `
+        <tr>
+          <td><img class="thumb" src="${p.image_url}" onerror="this.src='https://placehold.co/50x60/1a0010/ff69b4?text=D'" /></td>
+          <td>${p.title}</td>
+          <td><span class="badge">${p.category_id}</span></td>
+          <td>&#8377;${p.price.toFixed(2)}</td>
+          <td ${p.quantity<15?'class="qty-warn"':''}>${p.quantity}</td>
+          <td><button class="${p.active?"badge-active":"badge-inactive"} btn-toggle" data-id="${p.id}">${p.active?"Active":"Inactive"}</button></td>
+          <td style="display:flex;gap:0.4rem">
+            <button class="btn btn-sm btn-warning btn-edit" data-id="${p.id}">Edit</button>
+            <button class="btn btn-sm btn-danger btn-del" data-id="${p.id}">Delete</button>
+          </td>
+        </tr>`).join(""));
+    }
+    // Pagination
+    if (total > 1) {
+      $("#pagination").html(`
+        <button id="pg-prev" ${currentPage===1?"disabled":""}>&#8592; Prev</button>
+        <span>Page ${currentPage} of ${total}</span>
+        <button id="pg-next" ${currentPage===total?"disabled":""}>Next &#8594;</button>`);
+    } else { $("#pagination").empty(); }
+  }
+
+  $("#cat-filter").on("change", function() { currentPage=1; renderTable(); });
+
+  $(document).on("click", "#pg-prev", function() { currentPage--; renderTable(); });
+  $(document).on("click", "#pg-next", function() { currentPage++; renderTable(); });
+
+  // Toggle active
+  $(document).on("click", ".btn-toggle", function() {
+    const id = $(this).data("id");
+    const p = allProducts.find(p => p.id === id);
+    if (!p) return;
+    updateProduct(id, { active: !p.active }).then(loadProducts);
+  });
+
+  // Open add modal
+  $("#btn-add").on("click", function() {
+    editId = null; $("#modal-title").text("Add Product");
+    $("#product-form")[0].reset(); $("#f-active").prop("checked", true);
+    $("#product-modal").addClass("show");
+  });
+
+  // Open edit modal
+  $(document).on("click", ".btn-edit", function() {
+    const id = $(this).data("id");
+    const p = allProducts.find(p => p.id === id);
+    if (!p) return;
+    editId = id; $("#modal-title").text("Edit Product");
+    $("#f-title").val(p.title); $("#f-cat").val(p.category_id);
+    $("#f-desc").val(p.description); $("#f-price").val(p.price);
+    $("#f-qty").val(p.quantity); $("#f-img").val(p.image_url);
+    $("#f-active").prop("checked", p.active);
+    $("#product-modal").addClass("show");
+  });
+
+  // Close modal
+  $("#btn-cancel, .modal-overlay").on("click", function(e) {
+    if (e.target === this) $("#product-modal").removeClass("show");
+  });
+  $(".modal").on("click", function(e) { e.stopPropagation(); });
+
+  // Save product
+  $("#product-form").on("submit", function(e) {
+    e.preventDefault();
+    const title = $("#f-title").val().trim();
+    const img = $("#f-img").val().trim();
+    if (!title || !img) { $("#modal-alert").html('<div class="alert alert-error">Title and image URL required.</div>'); return; }
+    const data = {
+      title, category_id: $("#f-cat").val(), description: $("#f-desc").val().trim(),
+      price: parseFloat($("#f-price").val()) || 0, quantity: parseInt($("#f-qty").val()) || 0,
+      image_url: img, active: $("#f-active").is(":checked")
+    };
+    if (data.price <= 0) { $("#modal-alert").html('<div class="alert alert-error">Price must be greater than 0.</div>'); return; }
+    $("#btn-save").text("Saving...").prop("disabled", true);
+    const action = editId ? updateProduct(editId, data) : addProduct(data);
+    action.then(function() {
+      $("#product-modal").removeClass("show"); loadProducts();
+      showAlert("Product saved!", "success");
+    }).catch(function() {
+      $("#modal-alert").html('<div class="alert alert-error">Save failed.</div>');
+    }).finally(function() {
+      $("#btn-save").text("Save").prop("disabled", false);
+    });
+  });
+
+  // Delete product
+  $(document).on("click", ".btn-del", function() {
+    const id = $(this).data("id");
+    const p = allProducts.find(p => p.id === id);
+    if (!confirm('Delete "' + p.title + '"?')) return;
+    deleteProduct(id).then(function() { loadProducts(); showAlert("Product deleted.", "success"); });
+  });
+</script>
+</body>
+</html>

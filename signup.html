@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign Up – MedhaShopperStop</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<nav class="navbar">
+  <a href="index.html" class="brand">MedhaShopperStop</a>
+  <div class="nav-links">
+    <a href="login.html">Login</a>
+    <a href="signup.html">Sign Up</a>
+  </div>
+</nav>
+
+<div class="auth-page">
+  <div class="auth-card">
+    <h2>Create Account</h2>
+    <p class="auth-sub">Join MedhaShopperStop today</p>
+    <div id="alert-area"></div>
+    <form id="signup-form">
+      <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="name" placeholder="Jane Doe" required />
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="email" placeholder="you@example.com" required />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="••••••••" required />
+      </div>
+      <div class="form-group">
+        <label>Confirm Password</label>
+        <input type="password" id="confirm" placeholder="••••••••" required />
+      </div>
+      <button type="submit" class="btn btn-primary" id="btn-signup">Create Account</button>
+    </form>
+    <p class="auth-footer">Already have an account? <a href="login.html">Sign in</a></p>
+  </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<script src="js/firebase.js"></script>
+<script src="js/app.js"></script>
+<script>
+  auth.onAuthStateChanged(function(user) {
+    if (user) window.location.href = isAdmin(user) ? "admin.html" : "index.html";
+  });
+
+  $("#signup-form").on("submit", function(e) {
+    e.preventDefault();
+    const name = $("#name").val().trim();
+    const email = $("#email").val().trim();
+    const password = $("#password").val();
+    const confirm = $("#confirm").val();
+    if (!name || !email || !password || !confirm) return showAlert("All fields required.");
+    if (password.length < 6) return showAlert("Password must be at least 6 characters.");
+    if (password !== confirm) return showAlert("Passwords do not match.");
+    $("#btn-signup").text("Creating...").prop("disabled", true);
+    signUp(email, password, name).then(function() {
+      window.location.href = "index.html";
+    }).catch(function(err) {
+      const msg = err.message.includes("email-already-in-use") ? "Email already in use." : "Could not create account.";
+      showAlert(msg);
+      $("#btn-signup").text("Create Account").prop("disabled", false);
+    });
+  });
+</script>
+</body>
+</html>

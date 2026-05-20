@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MedhaShopperStop</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<nav class="navbar">
+  <a href="index.html" class="brand">MedhaShopperStop</a>
+  <div class="nav-links">
+    <a href="index.html">Shop</a>
+    <a href="cart.html" class="cart-wrap">Cart <span class="cart-badge" id="cart-badge" style="display:none">0</span></a>
+    <a href="orders.html">My Orders</a>
+    <a href="#" id="btn-logout">Logout</a>
+  </div>
+</nav>
+
+<div class="shop-header">
+  <h1>Dress Collection</h1>
+  <input type="text" class="search-input" id="search" placeholder="Search dresses..." />
+  <div class="cat-filters">
+    <button class="btn-cat active" data-cat="">All</button>
+    <button class="btn-cat" data-cat="women">Women</button>
+    <button class="btn-cat" data-cat="men">Men</button>
+    <button class="btn-cat" data-cat="kids">Kids</button>
+  </div>
+</div>
+
+<div id="alert-area" style="padding:0 2rem;"></div>
+<div class="product-grid" id="product-grid">
+  <p class="loading" style="grid-column:1/-1">Loading products...</p>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<script src="js/firebase.js"></script>
+<script src="js/app.js"></script>
+<script>
+  let allProducts = [], activeCat = "";
+
+  auth.onAuthStateChanged(function(user) {
+    if (!user) { window.location.href = "login.html"; return; }
+    if (isAdmin(user)) { window.location.href = "admin.html"; return; }
+    updateNavBadge();
+    loadProducts();
+  });
+
+  function loadProducts() {
+    getProducts().then(function(products) {
+      allProducts = products.filter(p => p.active !== false);
+      renderProducts(allProducts);
+    }).catch(function() {
+      $("#product-grid").html('<p class="empty" style="grid-column:1/-1">Failed to load products.</p>');
+    });
+  }
+
+  function renderProducts(list) {
+    if (!list.length) {
+      $("#product-grid").html('<p class="empty" style="grid-column:1/-1">No products found.</p>');
+      return;
+    }
+    $("#product-grid").html(list.map(p => `
+      <div class="product-card">
+        <div style="position:relative">
+          <img class="product-img" src="${p.image_url}" alt="${p.title}" onerror="this.src='https://placehold.co/300x380/1a0010/ff69b4?text=Dress'"/>
+          <span class="product-badge" style="position:absolute;top:8px;left:8px">${p.category_id}</span>
+        </div>
+        <div class="product-info">
+          <h3>${p.title}</h3>
+          <p class="product-desc">${p.description}</p>
+          <div class="product-footer">
+            <span class="price">&#8377;${p.price.toFixed(2)}</span>
+            <span class="stock-label">${p.quantity > 0 ? p.quantity+" left" : "Out of stock"}</span>
+          </div>
+          <button class="btn btn-primary btn-add" data-id="${p.id}" ${p.quantity===0?"disabled":""}>
+            ${p.quantity===0 ? "Out of Stock" : "Add to Cart"}
+          </button>
+        </div>
+      </div>`).join(""));
+  }
+
+  $(document).on("click", ".btn-cat", function() {
+    $(".btn-cat").removeClass("active"); $(this).addClass("active");
+    activeCat = $(this).data("cat"); filterProducts();
+  });
+
+  $("#search").on("input", filterProducts);
+
+  function filterProducts() {
+    const q = $("#search").val().toLowerCase();
+    let list = allProducts;
+    if (activeCat) list = list.filter(p => p.category_id === activeCat);
+    if (q) list = list.filter(p => p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q));
+    renderProducts(list);
+  }
+
+  $(document).on("click", ".btn-add", function() {
+    const id = $(this).data("id");
+    const p = allProducts.find(p => p.id === id);
+    if (!p) return;
+    addToCart(p, 1);
+    const btn = $(this);
+    btn.text("✓ Added!").prop("disabled", true);
+    setTimeout(() => btn.text("Add to Cart").prop("disabled", false), 1500);
+    showAlert(p.title + " added to cart!", "success");
+  });
+</script>
+</body>
+</html>

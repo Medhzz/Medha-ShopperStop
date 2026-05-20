@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Orders – MedhaShopperStop</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<nav class="navbar">
+  <a href="index.html" class="brand">MedhaShopperStop</a>
+  <div class="nav-links">
+    <a href="index.html">Shop</a>
+    <a href="cart.html" class="cart-wrap">Cart <span class="cart-badge" id="cart-badge" style="display:none">0</span></a>
+    <a href="orders.html">My Orders</a>
+    <a href="#" id="btn-logout">Logout</a>
+  </div>
+</nav>
+
+<div class="page">
+  <h2>My Orders</h2>
+  <div id="alert-area"></div>
+  <div id="orders-list"><p class="loading">Loading orders...</p></div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<script src="js/firebase.js"></script>
+<script src="js/app.js"></script>
+<script>
+  auth.onAuthStateChanged(function(user) {
+    if (!user) { window.location.href = "login.html"; return; }
+    if (isAdmin(user)) { window.location.href = "admin.html"; return; }
+    updateNavBadge();
+    getOrdersByUser(user.uid).then(renderOrders);
+  });
+
+  function renderOrders(orders) {
+    if (!orders.length) {
+      $("#orders-list").html('<p class="empty">No orders yet. <a href="index.html">Shop now &rarr;</a></p>');
+      return;
+    }
+    $("#orders-list").html(orders.map(o => {
+      const date = new Date(o.createdAt).toLocaleDateString();
+      const rowsHtml = o.items.map(i => `
+        <tr>
+          <td>${i.title}</td><td>${i.quantity}</td>
+          <td>&#8377;${i.price.toFixed(2)}</td>
+          <td>&#8377;${(i.price*i.quantity).toFixed(2)}</td>
+        </tr>`).join("");
+      return `
+        <div class="order-card">
+          <div class="order-head" onclick="$(this).next().slideToggle()">
+            <div>
+              <div class="order-id">Order #${o.id.slice(-6).toUpperCase()}</div>
+              <div class="order-date">${date}</div>
+            </div>
+            <div class="order-meta">
+              <span class="badge badge-${o.paymentMethod}">${o.paymentMethod}</span>
+              <span class="order-total">&#8377;${o.total.toFixed(2)}</span>
+              <span style="color:rgba(255,255,255,0.4)">&#9660;</span>
+            </div>
+          </div>
+          <div class="order-details">
+            <table>
+              <thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Subtotal</th></tr></thead>
+              <tbody>${rowsHtml}</tbody>
+              <tfoot><tr><td colspan="3"><strong>Total</strong></td><td><strong>&#8377;${o.total.toFixed(2)}</strong></td></tr></tfoot>
+            </table>
+          </div>
+        </div>`;
+    }).join(""));
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reports – MedhaShopperStop</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<nav class="navbar">
+  <a href="admin.html" class="brand">MedhaShopperStop</a>
+  <div class="nav-links">
+    <a href="admin.html">Products</a>
+    <a href="reports.html">Reports</a>
+    <a href="#" id="btn-logout">Logout</a>
+  </div>
+</nav>
+
+<div class="page">
+  <h2>Reports</h2>
+  <div id="alert-area"></div>
+  <div class="stat-grid" id="stats"><p class="loading">Loading...</p></div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="sales">Sales</button>
+    <button class="tab-btn" data-tab="inventory">Inventory</button>
+    <button class="tab-btn" data-tab="customers">Customers</button>
+    <button class="tab-btn" data-tab="top">Top Items</button>
+  </div>
+
+  <div id="tab-sales" class="tab-content">
+    <div class="table-wrap"><table><thead><tr><th>Order ID</th><th>Customer</th><th>Total</th><th>Payment</th><th>Date</th></tr></thead><tbody id="tb-sales"></tbody></table></div>
+  </div>
+  <div id="tab-inventory" class="tab-content" style="display:none">
+    <p class="section-title">Low Stock (&lt;15)</p>
+    <div class="table-wrap"><table><thead><tr><th>Title</th><th>Category</th><th>Qty</th><th>Price</th></tr></thead><tbody id="tb-low"></tbody></table></div>
+    <p class="section-title">High Stock (&gt;100)</p>
+    <div class="table-wrap"><table><thead><tr><th>Title</th><th>Category</th><th>Qty</th><th>Price</th></tr></thead><tbody id="tb-high"></tbody></table></div>
+  </div>
+  <div id="tab-customers" class="tab-content" style="display:none">
+    <div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Credit Limit</th><th>Credit Used</th></tr></thead><tbody id="tb-customers"></tbody></table></div>
+  </div>
+  <div id="tab-top" class="tab-content" style="display:none">
+    <div class="table-wrap"><table><thead><tr><th>Rank</th><th>Product</th><th>Units Sold</th><th>Revenue</th></tr></thead><tbody id="tb-top"></tbody></table></div>
+  </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<script src="js/firebase.js"></script>
+<script src="js/app.js"></script>
+<script>
+  auth.onAuthStateChanged(function(user) {
+    if (!user) { window.location.href = "login.html"; return; }
+    if (!isAdmin(user)) { window.location.href = "index.html"; return; }
+    loadReports();
+  });
+
+  function loadReports() {
+    Promise.all([getAllOrders(), getProducts(), getAllCustomers()]).then(function([orders, products, customers]) {
+      const totalRev = orders.reduce((s, o) => s + o.total, 0);
+      $("#stats").html(`
+        <div class="stat-card"><div class="stat-val">&#8377;${totalRev.toFixed(2)}</div><div class="stat-label">Total Revenue</div></div>
+        <div class="stat-card"><div class="stat-val">${orders.length}</div><div class="stat-label">Orders</div></div>
+        <div class="stat-card"><div class="stat-val">${products.length}</div><div class="stat-label">Products</div></div>
+        <div class="stat-card"><div class="stat-val">${customers.length}</div><div class="stat-label">Customers</div></div>`);
+
+      // Sales table
+      $("#tb-sales").html(orders.length ? orders.map(o => `
+        <tr><td>#${o.id.slice(-6).toUpperCase()}</td><td>${o.customerName}</td>
+        <td>&#8377;${o.total.toFixed(2)}</td>
+        <td><span class="badge badge-${o.paymentMethod}">${o.paymentMethod}</span></td>
+        <td>${new Date(o.createdAt).toLocaleDateString()}</td></tr>`).join("")
+        : '<tr><td colspan="5" class="empty">No orders yet.</td></tr>');
+
+      // Inventory
+      const low = products.filter(p => p.quantity < 15);
+      const high = products.filter(p => p.quantity > 100);
+      const invRow = (p) => `<tr><td>${p.title}</td><td>${p.category_id}</td><td class="qty-warn">${p.quantity}</td><td>&#8377;${p.price}</td></tr>`;
+      $("#tb-low").html(low.length ? low.map(invRow).join("") : '<tr><td colspan="4" class="empty">None</td></tr>');
+      $("#tb-high").html(high.length ? high.map(p => `<tr><td>${p.title}</td><td>${p.category_id}</td><td>${p.quantity}</td><td>&#8377;${p.price}</td></tr>`).join("") : '<tr><td colspan="4" class="empty">None</td></tr>');
+
+      // Customers
+      $("#tb-customers").html(customers.length ? customers.map(c => `
+        <tr><td>${c.name||""}</td><td>${c.email||""}</td>
+        <td>&#8377;${c.creditLimit||1000}</td><td>&#8377;${c.creditUsed||0}</td></tr>`).join("")
+        : '<tr><td colspan="4" class="empty">No customers yet.</td></tr>');
+
+      // Top items
+      const map = {};
+      orders.forEach(o => o.items.forEach(i => {
+        if (!map[i.productId]) map[i.productId] = { title: i.title, qty: 0, rev: 0 };
+        map[i.productId].qty += i.quantity;
+        map[i.productId].rev += i.price * i.quantity;
+      }));
+      const top = Object.entries(map).sort((a,b) => b[1].qty - a[1].qty).slice(0,10);
+      $("#tb-top").html(top.length ? top.map(([,v],i) => `
+        <tr><td>#${i+1}</td><td>${v.title}</td><td>${v.qty}</td><td>&#8377;${v.rev.toFixed(2)}</td></tr>`).join("")
+        : '<tr><td colspan="4" class="empty">No sales yet.</td></tr>');
+    });
+  }
+
+  // Tabs
+  $(".tab-btn").on("click", function() {
+    $(".tab-btn").removeClass("active"); $(this).addClass("active");
+    $(".tab-content").hide();
+    $("#tab-" + $(this).data("tab")).show();
+  });
+</script>
+</body>
+</html>
